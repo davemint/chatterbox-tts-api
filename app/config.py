@@ -41,6 +41,9 @@ class Config:
     
     # CORS settings
     CORS_ORIGINS = os.getenv('CORS_ORIGINS', '*')
+
+    # Output format settings: "wav" or "mp3"
+    DEFAULT_OUTPUT_FORMAT = os.getenv('TTS_OUTPUT_FORMAT', 'wav')
     
     @classmethod
     def validate(cls):
