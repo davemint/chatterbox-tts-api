@@ -147,11 +147,29 @@ async def generate_speech_internal(
     language_id: str = "en",
     exaggeration: Optional[float] = None,
     cfg_weight: Optional[float] = None,
-    temperature: Optional[float] = None
+    temperature: Optional[float] = None,
+    output_format: Optional[str] = None
 ) -> io.BytesIO:
-    """Internal function to generate speech with given parameters"""
+    """Internal function to generate speech with given parameters and output format"""
     global REQUEST_COUNTER
     REQUEST_COUNTER += 1
+    
+    # determine output_format: param override → env default → hard‑coded
+    output_format = (
+        output_format
+        if output_format is not None
+        else Config.DEFAULT_OUTPUT_FORMAT
+    )
+    if output_format not in ("wav", "mp3"):
+        update_tts_status(request_id, TTSStatus.ERROR,
+                          error_message=f"Invalid output format '{output_format}'. Use 'wav' or 'mp3'.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": {"message": f"Invalid output format '{output_format}'. Use 'wav' or 'mp3'.",
+                          "type": "invalid_request_error"}
+            }
+        )
     
     # Start TTS request tracking
     voice_source = "uploaded file" if voice_sample_path != Config.VOICE_SAMPLE_PATH else "default"
@@ -162,7 +180,8 @@ async def generate_speech_internal(
             "exaggeration": exaggeration,
             "cfg_weight": cfg_weight,
             "temperature": temperature,
-            "voice_sample_path": voice_sample_path
+            "voice_sample_path": voice_sample_path,
+            "output_format": output_format
         }
     )
     
@@ -281,18 +300,26 @@ async def generate_speech_internal(
         else:
             final_audio = audio_chunks[0]
         
-        # Convert to WAV format
-        update_tts_status(request_id, TTSStatus.FINALIZING, "Converting to WAV format")
+
+        # Convert to desired format
+        update_tts_status(request_id, TTSStatus.FINALIZING, f"Converting to {output_format.upper()} format")
         buffer = io.BytesIO()
-        
-        # Ensure final_audio is on CPU for saving
-        if hasattr(final_audio, 'cpu'):
-            final_audio_cpu = final_audio.cpu()
+
+        # Ensure tensor on CPU for saving
+        final_audio_cpu = final_audio.cpu() if hasattr(final_audio, 'cpu') else final_audio
+
+        if output_format == "wav":
+            ta.save(buffer, final_audio_cpu, model.sr, format="wav")
+            buffer.seek(0)
         else:
-            final_audio_cpu = final_audio
-            
-        ta.save(buffer, final_audio_cpu, model.sr, format="wav")
-        buffer.seek(0)
+            # MP3 path: use temp file for encoder
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
+                tmp_path = tmp.name
+            ta.save(tmp_path, final_audio_cpu, model.sr, format="mp3")
+            with open(tmp_path, 'rb') as f:
+                buffer.write(f.read())
+            os.unlink(tmp_path)
+            buffer.seek(0)
         
         # Mark as completed
         update_tts_status(request_id, TTSStatus.COMPLETED, "Audio generation completed")
