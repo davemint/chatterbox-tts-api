@@ -50,6 +50,9 @@ class Config:
     CUDA_CACHE_CLEAR_INTERVAL = int(os.getenv('CUDA_CACHE_CLEAR_INTERVAL', 3))
     ENABLE_MEMORY_MONITORING = os.getenv('ENABLE_MEMORY_MONITORING', 'true').lower() == 'true'
     
+    # Output format settings: "wav" or "mp3"
+    DEFAULT_OUTPUT_FORMAT = os.getenv('TTS_OUTPUT_FORMAT', 'wav')
+    
     # CORS settings
     CORS_ORIGINS = os.getenv('CORS_ORIGINS', '*')
     
